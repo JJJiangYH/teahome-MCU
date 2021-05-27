@@ -1,0 +1,12 @@
+".\Output\main.obj",
+".\Output\delay.obj",
+".\Output\uart.obj",
+".\Output\timeControl.obj",
+".\Output\i2c.obj",
+".\Output\ds18b20.obj",
+".\Output\oled.obj",
+".\Output\oledfont.obj",
+".\Output\led.obj" 
+TO ".\Output\DS18B20" 
+PRINT(".\List\DS18B20.m51") RAMSIZE(256) 
+DISABLEWARNING (16) 

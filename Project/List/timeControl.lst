@@ -1,0 +1,210 @@
+C51 COMPILER V9.52.0.0   TIMECONTROL                                                       05/26/2021 20:02:34 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE TIMECONTROL
+OBJECT MODULE PLACED IN .\Output\timeControl.obj
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE ..\Source\timeControl.c LARGE BROWSE INCDIR(..\Source;..\User) DEBUG OBJECT
+                    -EXTEND PRINT(.\List\timeControl.lst) TABS(2) OBJECT(.\Output\timeControl.obj)
+
+line level    source
+
+   1          #include  "timeControl.h" 
+   2          #include  "i2c.h"
+   3          #include "uart.h"
+   4          #include "oled.h"
+   5          
+   6          volatile uint8  hour, minute, second;        //RTC变量，时，分，秒
+   7          volatile uint8  myweek, day, month, year;    //RTC变量，周，天，月，年
+   8          uint8 time[6];
+   9          uint8 date[9];
+  10          static uint8  LED8[8];                     //显示存放的时，分，秒信息
+  11          static uint8  DAY[2];                      //显示存放的天数信息
+  12          static uint8  MONTH[2];                    //显示存放的月份信息
+  13          static uint8  YEAR[2];                     //显示存放的年份信息
+  14          static uint8  ErrFlag;                     //错误标志位
+  15          
+  16          /**************************************************************************************
+  17          功能描述：向指定地址写数据（PCF8563）
+  18          入口参数：uint8 addr, uint8 *p, uint8 number
+  19          返回值：无
+  20           **************************************************************************************/
+  21          void WriteNbyte(uint8 addr, uint8* p, uint8 number)     /*  WordAddress,First Data Address,Byte lenth */
+  22                                        //F0=0,right, F0=1,error
+  23          {
+  24   1        I2C_Start();
+  25   1        I2C_SendByte(SLAW);
+  26   1        I2C_Check_ACK();
+  27   1        if (!F0)
+  28   1        {
+  29   2          I2C_SendByte(addr);
+  30   2          I2C_Check_ACK();
+  31   2          if (!F0)
+  32   2          {
+  33   3            do
+  34   3            {
+  35   4              I2C_SendByte(*p);   p++;
+  36   4              I2C_Check_ACK();
+  37   4              if (F0) break;
+  38   4            } while (--number);
+  39   3          }
+  40   2        }
+  41   1        I2C_Stop();
+  42   1      }
+  43          
+  44          /**************************************************************************************
+  45          功能描述：向指定地址读取数据（PCF8563）
+  46          入口参数：uint8 addr, uint8 *p, uint8 number
+  47          返回值：无
+  48           **************************************************************************************/
+  49          void ReadNbyte(uint8 addr, uint8* p, uint8 number)    /*  WordAddress,First Data Address,Byte lenth */
+  50          {
+  51   1        I2C_Start();
+  52   1        I2C_SendByte(SLAW);
+  53   1        I2C_Check_ACK();
+  54   1        if (!F0)
+C51 COMPILER V9.52.0.0   TIMECONTROL                                                       05/26/2021 20:02:34 PAGE 2   
+
+  55   1        {
+  56   2          I2C_SendByte(addr);
+  57   2          I2C_Check_ACK();
+  58   2          if (!F0)
+  59   2          {
+  60   3            I2C_Start();
+  61   3            I2C_SendByte(SLAR);
+  62   3            I2C_Check_ACK();
+  63   3            if (!F0)
+  64   3            {
+  65   4              do
+  66   4              {
+  67   5                *p = I2C_ReceiveByte(); p++;
+  68   5                if (number != 1)    I2C_Ack();  //send ACK
+  69   5              } while (--number);
+  70   4              I2C_NoAck();      //send no ACK
+  71   4            }
+  72   3          }
+  73   2        }
+  74   1        I2C_Stop();
+  75   1      }
+  76          
+  77          /**************************************************************************************
+  78          功能描述：读RTC函数
+  79          入口参数：无
+  80          返回值：无
+  81           **************************************************************************************/
+  82          void  ReadRTC(void)
+  83          {
+  84   1        uint8 tmp[7];
+  85   1      
+  86   1        ReadNbyte(2, tmp, 7);
+  87   1        second = ((tmp[0] >> 4) & 0x07) * 10 + (tmp[0] & 0x0f);
+  88   1        minute = ((tmp[1] >> 4) & 0x07) * 10 + (tmp[1] & 0x0f);
+  89   1        hour = ((tmp[2] >> 4) & 0x03) * 10 + (tmp[2] & 0x0f);
+  90   1        day = ((tmp[3] >> 4) & 0x03) * 10 + (tmp[3] & 0x0f);
+  91   1        myweek = (tmp[4] & 0x07);
+  92   1        month = ((tmp[5] >> 4) & 0x01) * 10 + (tmp[5] & 0x0f);
+  93   1        year = ((tmp[6] >> 4) & 0x0f) * 10 + (tmp[6] & 0x0f);
+  94   1      }
+  95          
+  96          /***************************************************************************************
+  97          功能描述：写RTC函数
+  98          入口参数：无
+  99          返回值：无
+ 100          ***************************************************************************************/
+ 101          void  WriteRTC(void)
+ 102          {
+ 103   1        uint8 tmp[7];
+ 104   1      
+ 105   1        tmp[0] = ((second / 10) << 4) + (second % 10);
+ 106   1        tmp[1] = ((minute / 10) << 4) + (minute % 10);
+ 107   1        tmp[2] = ((hour / 10) << 4) + (hour % 10);
+ 108   1        tmp[3] = ((day / 10) << 4) + (day % 10);
+ 109   1        tmp[4] = (myweek % 10);
+ 110   1        tmp[5] = ((month / 10) << 4) + (month % 10);
+ 111   1        tmp[6] = ((year / 10) << 4) + (year % 10);
+ 112   1        WriteNbyte(2, tmp, 7);
+ 113   1      }
+ 114          
+ 115          /**************************************************************************************
+ 116          功能描述：PCF8563时钟初始化
+C51 COMPILER V9.52.0.0   TIMECONTROL                                                       05/26/2021 20:02:34 PAGE 3   
+
+ 117          入口参数：无
+ 118          返回值：无
+ 119           **************************************************************************************/
+ 120          void PCF8563_Init(void)
+ 121          {
+ 122   1        ErrFlag = 0;
+ 123   1        ReadRTC();          //读PCF8563时钟值，即读出时、分、秒
+ 124   1      
+ 125   1        if (second >= 60) ErrFlag = 1;     //读出的秒超出范围，判断出错
+ 126   1        if (minute >= 60) ErrFlag = 1;     //读出的分超出范围，判断出错
+ 127   1        if (hour >= 24) ErrFlag = 1;     //读出的时超出范围，判断出错
+ 128   1        if (myweek >= 7)  ErrFlag = 1;   //读出的周超出范围，判断出错
+ 129   1        if (day > 31) ErrFlag = 1;     //读出的天超出范围，判断出错
+ 130   1        if (month >= 12)  ErrFlag = 1;     //读出的月超出范围，判断出错
+ 131   1        if (year > 99)  ErrFlag = 1;     //读出的年超出范围，判断出错
+ 132   1      
+ 133   1          //year = 21;
+ 134   1          //month = 5;
+ 135   1          //day = 6;
+ 136   1          //myweek = 2;
+ 137   1          //hour = 20;
+ 138   1          //minute = 30;
+ 139   1          //second = 0;
+ 140   1          //WriteRTC();             //把新的时钟值写进PCF8563模块
+ 141   1      }
+ 142          
+ 143          /**************************************************************************************
+ 144          功能描述：PCF8563时钟信息处理
+ 145          入口参数：无
+ 146          返回值：无
+ 147           **************************************************************************************/
+ 148          void PCF8563_TEST(void)
+ 149          {
+ 150   1        memset(time, 0, 6);                   //将temp数组初始化（清零）
+ 151   1        memset(date, 0, 9);                   //将date数组初始化（清零）
+ 152   1      
+ 153   1        ReadRTC();                            //读PCF8563时钟值，即读出时、分、秒
+ 154   1      
+ 155   1        if (hour >= 10) time[0] = hour / 10 + 0x30;
+ 156   1        else      time[0] = 0 + 0x30;
+ 157   1        time[1] = hour % 10 + 0x30;
+ 158   1        time[2] = 10 + 0x30;            // 10+48值为58  对应ASCII码：
+ 159   1        time[3] = minute / 10 + 0x30;
+ 160   1        time[4] = minute % 10 + 0x30;
+ 161   1        
+ 162   1        date[0] = year / 10 + 0x30;
+ 163   1        date[1] = year % 10 + 0x30;
+ 164   1        date[2] = -3 + 0x30;             // 10+48值为58  对应ASCII码-
+ 165   1        date[3] = month / 10 + 0x30;
+ 166   1        date[4] = month % 10 + 0x30;
+ 167   1        date[5] = -3 + 0x30;             // 10+48值为58  对应ASCII码-
+ 168   1        date[6] = day / 10 + 0x30;
+ 169   1        date[7] = day % 10 + 0x30;
+ 170   1      
+ 171   1        //实时时钟时、分、秒信息串口显示
+ 172   1        SendStringByUart1("The time is:");
+ 173   1        SendStringByUart1(time);
+ 174   1        SendStringByUart1("\r\n");
+ 175   1        SendStringByUart1("The date is:");
+ 176   1        SendStringByUart1(date);
+ 177   1        SendStringByUart1("\r\n");              //发送换行符  
+ 178   1      }
+C51 COMPILER V9.52.0.0   TIMECONTROL                                                       05/26/2021 20:02:34 PAGE 4   
+
+ 179          /*********************************END FILE********************************************/
+ 180          
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    902    ----
+   CONSTANT SIZE    =     29    ----
+   XDATA SIZE       =     37      24
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)

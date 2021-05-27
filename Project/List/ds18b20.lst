@@ -1,0 +1,173 @@
+C51 COMPILER V9.52.0.0   DS18B20                                                           05/26/2021 20:02:34 PAGE 1   
+
+
+C51 COMPILER V9.52.0.0, COMPILATION OF MODULE DS18B20
+OBJECT MODULE PLACED IN .\Output\ds18b20.obj
+COMPILER INVOKED BY: C:\Keil\C51\BIN\C51.EXE ..\Source\ds18b20.c LARGE BROWSE INCDIR(..\Source;..\User) DEBUG OBJECTEXTE
+                    -ND PRINT(.\List\ds18b20.lst) TABS(2) OBJECT(.\Output\ds18b20.obj)
+
+line level    source
+
+   1          #include  "ds18b20.h" 
+   2          #include  "uart.h"  
+   3          #include  "oled.h"
+   4          
+   5          static uint8 ReadTempFlag;
+   6          uint8 temp[6];
+   7          uint8 constantTemp[3];
+   8          float fTemp;
+   9          
+  10          /******************************************************************************
+  11           * 描  述 : ds18b20初始化
+  12           * 入  参 : 无
+  13           * 返回值 : 初始化成功:0
+  14           *          初始化失败:1
+  15           *****************************************************************************/
+  16          uint8 Init_Ds18b20(void)
+  17          {
+  18   1          uint8 Status = 0;
+  19   1          uint16 CONT_1 = 0;
+  20   1          uint8 Flag_1 = 1;
+  21   1      
+  22   1          DATA_PIN = 1;            //主机拉高
+  23   1           delay_10us(26);          //延时约260us
+  24   1          DATA_PIN = 0;            //主机拉低
+  25   1          delay_10us(75);          //延时约750us 大于 480us 小于960us
+  26   1          DATA_PIN = 1;            //主机拉高
+  27   1          while((DATA_PIN)&&(Flag_1 == 1))       //等待ds18b20响应，具有防止超时功能
+  28   1          {                                      //等待约60ms左右
+  29   2              CONT_1++;
+  30   2              delay_10us(1);                     //延时约10us
+  31   2              if(CONT_1 > 8000)Flag_1 = 0;
+  32   2              Status = DATA_PIN;
+  33   2          }
+  34   1          DATA_PIN = 1;               //主机拉高
+  35   1          delay_10us(10);             //延时约100us
+  36   1          memset(constantTemp, 0, 3);
+  37   1          
+  38   1          return Status;       //返回初始化状态
+  39   1      }
+  40          
+  41          /******************************************************************************
+  42           * 描  述 : Ds18b20写操作：写入1个字节
+  43           * 入  参 : 无
+  44           * 返回值 : 无
+  45           *****************************************************************************/
+  46          void Ds18b20Write(uint8 dat)
+  47          {
+  48   1          uint16 i;
+  49   1          
+  50   1          for(i=0;i<8;i++)
+  51   1          {
+  52   2              if((dat & 0x01))
+  53   2              {
+  54   3                  DATA_PIN = 0;       //主机拉低
+C51 COMPILER V9.52.0.0   DS18B20                                                           05/26/2021 20:02:34 PAGE 2   
+
+  55   3                  Delay1us();         //延时约1us
+  56   3                  DATA_PIN = 1;       //主机拉高
+  57   3                  delay_10us(6);      //延时约60us
+  58   3              }
+  59   2              else
+  60   2              {
+  61   3                  DATA_PIN = 0;      //主机拉低
+  62   3                  delay_10us(6);     //延时约60us
+  63   3                  DATA_PIN = 1;      //主机拉高
+  64   3                  Delay1us();        //延时约1us
+  65   3              }
+  66   2              dat >>= 1;
+  67   2          }
+  68   1      }
+  69          
+  70          /******************************************************************************
+  71           * 描  述 : Ds18b20读操作：读出1个字节
+  72           * 入  参 : 无
+  73           * 返回值 : 读取的1字节数据
+  74           *****************************************************************************/
+  75          uint8 Ds18b20Read(void)
+  76          {
+  77   1          uint8 Value = 0x00;
+  78   1          uint16 i;
+  79   1      
+  80   1          DATA_PIN = 1;           //主机拉高
+  81   1          delay_10us(1);          //延时约10us
+  82   1          for(i=0;i<8;i++)
+  83   1          {
+  84   2              Value >>= 1; 
+  85   2              DATA_PIN = 0;       //主机拉低，给脉冲信号
+  86   2              Delay1us();         //延时约1us
+  87   2              DATA_PIN = 1;       //主机拉高，给脉冲信号
+  88   2              Delay1us();         //延时约1us
+  89   2              if(DATA_PIN) Value |= 0x80;
+  90   2              delay_10us(6);     //延时约60us
+  91   2          } 
+  92   1          return Value;
+  93   1      }
+  94          
+  95          /******************************************************************************
+  96           * 描  述 : 温度读取函数 带1位小数位
+  97           * 入  参 : 无
+  98           * 返回值 : 温度值
+  99           *****************************************************************************/
+ 100          float floatReadDs18B20(void)
+ 101          {
+ 102   1          uint8 V1, V2;     //定义高低8位 缓冲
+ 103   1          uint16 temp;     //定义温度缓冲寄存器
+ 104   1          float fValue;
+ 105   1      
+ 106   1          Init_Ds18b20();
+ 107   1          Ds18b20Write(0xcc);    // 跳过读序号列号的操作
+ 108   1          Ds18b20Write(0x44);    // 启动温度转换
+ 109   1      
+ 110   1          Init_Ds18b20();
+ 111   1          Ds18b20Write(0xcc);    //跳过读序号列号的操作 
+ 112   1          Ds18b20Write(0xbe);    //读取温度寄存器等（共可读9个寄存器） 前两个就是温度
+ 113   1      
+ 114   1          V1 = Ds18b20Read();    //温度值低位
+ 115   1          V2 = Ds18b20Read();    //温度值高位
+ 116   1      
+C51 COMPILER V9.52.0.0   DS18B20                                                           05/26/2021 20:02:34 PAGE 3   
+
+ 117   1          ReadTempFlag = 0;    //非负温温时，将ReadTempFlag标志位赋值为0
+ 118   1          temp = ((V2 << 8) | V1);
+ 119   1      
+ 120   1          fValue = temp * 0.0625;   //计算温度值
+ 121   1      
+ 122   1          return fValue;          //返回温度值
+ 123   1      }
+ 124          
+ 125          /**************************************************************************************
+ 126           * 描  述 : 串口实时显示温湿度
+ 127           * 入  参 : 无
+ 128           * 返回值 : 无
+ 129           **************************************************************************************/
+ 130          void DS18B20_TEST(void)
+ 131          {
+ 132   1          memset(temp, 0, sizeof(temp));                  //将temp数组初始化（清零）
+ 133   1      
+ 134   1          fTemp = floatReadDs18B20();                    //温度读取函数
+ 135   1      
+ 136   1          if (fTemp > 100)sprintf(temp, "%03.01f", fTemp);                //浮点数转成字符串 
+ 137   1          else sprintf(temp, "%02.02f", fTemp);
+ 138   1        
+ 139   1          IE2 &= 0xEF;                           //串口4中断关闭
+ 140   1        
+ 141   1          //串口打印温度值
+ 142   1          SendStringByUart4(temp);
+ 143   1          Uart4_Init();                          //串口4初始化，并打开串口4中断 
+ 144   1      }
+ 145          /*********************************END FILE*************************************/
+
+
+MODULE INFORMATION:   STATIC OVERLAYABLE
+   CODE SIZE        =    487    ----
+   CONSTANT SIZE    =     16    ----
+   XDATA SIZE       =     14      11
+   PDATA SIZE       =   ----    ----
+   DATA SIZE        =   ----    ----
+   IDATA SIZE       =   ----    ----
+   BIT SIZE         =   ----    ----
+END OF MODULE INFORMATION.
+
+
+C51 COMPILATION COMPLETE.  0 WARNING(S),  0 ERROR(S)
